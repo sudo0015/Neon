@@ -1,26 +1,23 @@
 # -*- coding: utf-8 -*-
 
+import re
 import sys
-from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QSize, pyqtProperty, QRect, QRectF, QEvent
-from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient
-from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QStackedWidget, QWidget, \
-    QGridLayout, QListWidget, QListWidgetItem, QFrame, QSwipeGesture
-from qfluentwidgets import BodyLabel, FluentIcon, isDarkTheme, MSFluentTitleBar, HorizontalPipsPager, \
-    PipsScrollButtonDisplayMode, ImageLabel, TitleLabel, SmoothScrollBar, FluentStyleSheet, ToolTipFilter, \
-    ToolTipPosition, StrongBodyLabel, DisplayLabel, SubtitleLabel
+import time
+import requests
+from typing import Union
+from NeonConfig import cfg
+from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QSize, pyqtProperty, QRect, QRectF, QEvent, QUrl, QThread, QDate, \
+    QTimer
+from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient, QIcon, QDesktopServices, QFontMetrics, QFont
+from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QStackedWidget, QWidget, QGridLayout, QListWidget, \
+    QListWidgetItem, QFrame, QSwipeGesture, QPushButton, QSizePolicy, QStyleOptionButton, QStyle, QLabel
+from qfluentwidgets import FluentIcon, isDarkTheme, HorizontalPipsPager, drawIcon, PipsScrollButtonDisplayMode, \
+    ImageLabel, SmoothScrollBar, FluentStyleSheet, ToolTipFilter, ToolTipPosition, setTheme, Theme, setFont, \
+    FluentIconBase, themeColor, qconfig, setCustomStyleSheet, getFont
+from qfluentwidgets.components.widgets.menu import LabelContextMenu
 from qfluentwidgets.common.animation import BackgroundAnimationWidget
 from qfluentwidgets.components.widgets.pips_pager import PipsDelegate, ScrollButton
 from qfluentwidgets.common.overload import singledispatchmethod
-
-
-def isWin11():
-    return sys.platform == 'win32' and sys.getwindowsversion().build >= 22000
-
-
-if isWin11():
-    from qframelesswindow import AcrylicWindow as Window
-else:
-    from qframelesswindow import FramelessWindow as Window
 
 
 class PipsPager(QListWidget):
@@ -232,11 +229,11 @@ class PipsPager(QListWidget):
         bw, bh = self.preButton.width(), self.preButton.height()
 
         if self.isHorizontal():
-            self.preButton.move(0, int(h/2 - bh/2))
-            self.nextButton.move(w - bw, int(h/2 - bh/2))
+            self.preButton.move(0, int(h / 2 - bh / 2))
+            self.nextButton.move(w - bw, int(h / 2 - bh / 2))
         else:
-            self.preButton.move(int(w/2-bw/2), 0)
-            self.nextButton.move(int(w/2-bw/2), h-bh)
+            self.preButton.move(int(w / 2 - bw / 2), 0)
+            self.nextButton.move(int(w / 2 - bw / 2), h - bh)
 
     visibleNumber = pyqtProperty(int, getVisibleNumber, setVisibleNumber)
     pageNumber = pyqtProperty(int, getPageNumber, setPageNumber)
@@ -249,9 +246,298 @@ class HorizontalPipsPager(PipsPager):
         super().__init__(Qt.Horizontal, parent)
 
 
-class CardWidget(BackgroundAnimationWidget, QFrame):
-    """ Card widget """
+class FluentLabelBase(QLabel):
+    """ Fluent label base class
 
+    Constructors
+    ------------
+    * FluentLabelBase(`parent`: QWidget = None)
+    * FluentLabelBase(`text`: str, `parent`: QWidget = None)
+    """
+
+    @singledispatchmethod
+    def __init__(self, parent: QWidget = None):
+        super().__init__(parent)
+        self._init()
+
+    @__init__.register
+    def _(self, text: str, parent: QWidget = None):
+        self.__init__(parent)
+        self.setText(text)
+
+    def _init(self):
+        FluentStyleSheet.LABEL.apply(self)
+        self.setFont(self.getFont())
+        self.setTextColor()
+        connect = qconfig.themeChanged.connect(lambda: self.setTextColor(self.lightColor, self.darkColor))
+        self.destroyed.connect(lambda: self.disconnect(connect))
+
+        self.customContextMenuRequested.connect(self._onContextMenuRequested)
+        return self
+
+    def getFont(self):
+        raise NotImplementedError
+
+    def setTextColor(self, light=QColor(0, 0, 0), dark=QColor(255, 255, 255)):
+        """ set the text color of label
+
+        Parameters
+        ----------
+        light, dark: QColor | Qt.GlobalColor | str
+            text color in light/dark mode
+        """
+        self._lightColor = QColor(light)
+        self._darkColor = QColor(dark)
+
+        setCustomStyleSheet(
+            self,
+            f"FluentLabelBase{{color:{self.lightColor.name(QColor.NameFormat.HexArgb)}}}",
+            f"FluentLabelBase{{color:{self.darkColor.name(QColor.NameFormat.HexArgb)}}}"
+        )
+
+    @pyqtProperty(QColor)
+    def lightColor(self):
+        return self._lightColor
+
+    @lightColor.setter
+    def lightColor(self, color: QColor):
+        self.setTextColor(color, self.darkColor)
+
+    @pyqtProperty(QColor)
+    def darkColor(self):
+        return self._darkColor
+
+    @darkColor.setter
+    def darkColor(self, color: QColor):
+        self.setTextColor(self.lightColor, color)
+
+    @pyqtProperty(int)
+    def pixelFontSize(self):
+        return self.font().pixelSize()
+
+    @pixelFontSize.setter
+    def pixelFontSize(self, size: int):
+        font = self.font()
+        font.setPixelSize(size)
+        self.setFont(font)
+
+    @pyqtProperty(bool)
+    def strikeOut(self):
+        return self.font().strikeOut()
+
+    @strikeOut.setter
+    def strikeOut(self, isStrikeOut: bool):
+        font = self.font()
+        font.setStrikeOut(isStrikeOut)
+        self.setFont(font)
+
+    @pyqtProperty(bool)
+    def underline(self):
+        return self.font().underline()
+
+    @underline.setter
+    def underline(self, isUnderline: bool):
+        font = self.font()
+        font.setStyle()
+        font.setUnderline(isUnderline)
+        self.setFont(font)
+
+    def _onContextMenuRequested(self, pos):
+        menu = LabelContextMenu(parent=self)
+        menu.exec(self.mapToGlobal(pos))
+
+
+class WeatherTitleLabel(FluentLabelBase):
+    def getFont(self):
+        return getFont(32, QFont.Bold)
+
+
+class WeatherContentLabel(FluentLabelBase):
+    def getFont(self):
+        return getFont(16, QFont.DemiBold)
+
+
+class MottoLabel(FluentLabelBase):
+    def getFont(self):
+        return getFont(18, QFont.Bold)
+
+
+class CountdownEventLabel(FluentLabelBase):
+    def getFont(self):
+        return getFont(28, QFont.Bold)
+
+
+class CountdownDisplayLabel(FluentLabelBase):
+    def getFont(self):
+        return getFont(72, QFont.Bold)
+
+
+class CurriculumButton(QPushButton):
+    @singledispatchmethod
+    def __init__(self, parent: QWidget = None):
+        super().__init__(parent)
+        self._url = QUrl()
+        self._large_text = ""
+        self._small_text = ""
+        self._large_size = cfg.FontSizeBig.value
+        self._small_size = cfg.FontSizeSmall.value
+        self._spacing = 0
+
+        self.setStyleSheet(
+            "QPushButton {font: '" + cfg.FontFamily.value + "'; padding: 6px 12px 6px 12px; color: rgb(0, 159, 170); border: none; border-radius: 6px; background-color: transparent;}"
+                                                            "QPushButton:hover {color: rgb(0, 159, 170); background-color: rgba(0, 0, 0, 10); border: none;}"
+                                                            "QPushButton:pressed {color: rgb(0, 159, 170); background-color: rgba(0, 0, 0, 6); border: none;}"
+                                                            "QPushButton:disabled {color: rgba(0, 0, 0, 0.43); background-color: transparent; border: none;}"
+        )
+        self.setCursor(Qt.PointingHandCursor)
+        setFont(self)
+        self.clicked.connect(self._onClicked)
+
+    @__init__.register
+    def _(self, url: str, text: str, parent: QWidget = None, icon: Union[QIcon, FluentIconBase, str] = None):
+        self.__init__(parent)
+        self.setText(text)
+        self.url.setUrl(url)
+        self.setIcon(icon)
+
+    @__init__.register
+    def _(self, icon: QIcon, url: str, text: str, parent: QWidget = None):
+        self.__init__(url, text, parent, icon)
+
+    @__init__.register
+    def _(self, icon: FluentIconBase, url: str, text: str, parent: QWidget = None):
+        self.__init__(url, text, parent, icon)
+
+    def getUrl(self):
+        return self._url
+
+    def setUrl(self, url: Union[str, QUrl]):
+        self._url = QUrl(url)
+
+    def _onClicked(self):
+        if self.getUrl().isValid():
+            QDesktopServices.openUrl(self.getUrl())
+
+    def _drawIcon(self, icon, painter, rect, state=QIcon.Off):
+        if isinstance(icon, FluentIconBase) and self.isEnabled():
+            icon = icon.icon(color=themeColor())
+        elif not self.isEnabled():
+            painter.setOpacity(0.3628 if isDarkTheme() else 0.36)
+
+        drawIcon(icon, painter, rect, state)
+
+    def setDualText(self, large_text: str, small_text: str):
+        self._large_text = large_text
+        self._small_text = small_text
+        self.update()
+
+    def setFontSizes(self, large_size: int, small_size: int):
+        self._large_size = large_size
+        self._small_size = small_size
+        self.update()
+
+    def setTextSpacing(self, spacing: int):
+        self._spacing = spacing
+        self.update()
+
+    def hasDualText(self) -> bool:
+        return bool(self._large_text and self._small_text)
+
+    def setText(self, text: str):
+        super().setText(text)
+        self._large_text = text
+        self._small_text = ""
+        self.update()
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        if self.hasDualText():
+            large_font = QFont(cfg.FontFamily.value, self._large_size)
+            small_font = QFont(cfg.FontFamily.value, self._small_size)
+
+            fm_large = QFontMetrics(large_font)
+            fm_small = QFontMetrics(small_font)
+
+            width = fm_large.width(self._large_text) + fm_small.width(self._small_text) + self._spacing
+            height = max(fm_large.height(), fm_small.height()) + 12
+
+            if width + 24 > hint.width():
+                hint.setWidth(width + 24)
+
+            if height > hint.height():
+                hint.setHeight(height)
+        return hint
+
+    def paintEvent(self, event):
+        if not self.hasDualText():
+            return super().paintEvent(event)
+
+        opt = QStyleOptionButton()
+        self.initStyleOption(opt)
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        self.style().drawControl(QStyle.CE_PushButton, opt, painter, self)
+
+        if not self.icon().isNull():
+            icon_rect = self.style().subElementRect(QStyle.SE_PushButtonContents, opt, self)
+            icon_rect.setWidth(min(icon_rect.width(), 32))
+            self._drawIcon(self.icon(), painter, icon_rect, opt.state & QStyle.State_On)
+
+        content_rect = self.style().subElementRect(QStyle.SE_PushButtonContents, opt, self)
+
+        large_font = QFont(cfg.FontFamily.value, self._large_size)
+        small_font = QFont(cfg.FontFamily.value, self._small_size)
+
+        fm_large = QFontMetrics(large_font)
+        fm_small = QFontMetrics(small_font)
+
+        large_width = fm_large.width(self._large_text)
+        small_width = fm_small.width(self._small_text)
+        total_width = large_width + small_width + self._spacing
+
+        start_x = content_rect.x() + (content_rect.width() - total_width) / 2
+        if not self.icon().isNull():
+            start_x += content_rect.width() * 0.1
+
+        base_y = content_rect.y() + (content_rect.height() + fm_large.ascent()) / 2 - fm_large.descent()
+
+        color = QColor(0, 159, 170)
+
+        if not self.isEnabled():
+            color = QColor(0, 0, 0, 109)
+        elif self.styleSheet():
+            style = self.styleSheet()
+            color_match = re.search(r'color:\s*(rgba?\([^)]+\)|#[0-9a-fA-F]{6,8})', style)
+            if color_match:
+                color_str = color_match.group(1)
+                if color_str.startswith('rgb'):
+                    values = re.findall(r'\d+', color_str)
+                    if len(values) >= 3:
+                        r, g, b = map(int, values[:3])
+                        a = int(values[3]) if len(values) > 3 else 255
+                        color = QColor(r, g, b, a)
+                else:
+                    color = QColor(color_str)
+
+        painter.setPen(color)
+
+        painter.setFont(large_font)
+        painter.drawText(int(start_x), int(base_y), self._large_text)
+
+        painter.setFont(small_font)
+        painter.drawText(int(start_x + large_width + self._spacing), int(base_y), self._small_text)
+
+        painter.end()
+
+    def text(self) -> str:
+        return self._large_text if self.hasDualText() else super().text()
+
+    url = pyqtProperty(QUrl, getUrl, setUrl)
+
+
+class CardWidget(BackgroundAnimationWidget, QFrame):
     clicked = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -268,7 +554,7 @@ class CardWidget(BackgroundAnimationWidget, QFrame):
         
         0 -> Normal Style
         1 -> Weather Style
-        2 -> Motto Style
+        2 -> Motto Style; Curriculum Style
         3 -> Countdown Style
         """
 
@@ -368,28 +654,33 @@ class CardWidget(BackgroundAnimationWidget, QFrame):
             gradient.setColorAt(0, self._gradientStartColor)
             gradient.setColorAt(1, self._gradientEndColor)
             painter.setBrush(gradient)
+
         elif self._styleIndex == 2:
             roundedPath = QPainterPath()
             roundedPath.addRoundedRect(QRectF(rect), r, r)
             painter.setClipPath(roundedPath)
-
-            upperRect = QRect(rect.left(), rect.top(), rect.width(), rect.height() // 2)
-            painter.fillRect(upperRect, QColor("#e9aa0c"))
-            lowerRect = QRect(rect.left(), rect.top() + rect.height() // 2, rect.width(), rect.height() // 2)
-            painter.fillRect(lowerRect, QColor("#f0d35d"))
-
+            if isDark:
+                acrylicColor = QColor(39, 39, 39, 180)
+            else:
+                acrylicColor = QColor(249, 249, 249, 180)
+            painter.fillRect(rect, acrylicColor)
+            highlightColor = QColor(255, 255, 255, 80 if isDark else 50)
+            gradient = QLinearGradient(0, 0, 0, h)
+            gradient.setColorAt(0, highlightColor)
+            gradient.setColorAt(0.5, QColor(0, 0, 0, 0))
+            painter.fillRect(rect, gradient)
             painter.setClipping(False)
+
         elif self._styleIndex == 3:
             roundedPath = QPainterPath()
             roundedPath.addRoundedRect(QRectF(rect), r, r)
             painter.setClipPath(roundedPath)
-
             upperRect = QRect(rect.left(), rect.top(), rect.width(), self.topHeight)
             painter.fillRect(upperRect, QColor("#990000"))
             lowerRect = QRect(rect.left(), rect.top() + self.topHeight, rect.width(), rect.height() - self.topHeight)
             painter.fillRect(lowerRect, QColor(255, 255, 255, 170 if not isDark else 13))
-
             painter.setClipping(False)
+
         else:
             painter.setBrush(self.backgroundColor)
 
@@ -398,29 +689,84 @@ class CardWidget(BackgroundAnimationWidget, QFrame):
     borderRadius = pyqtProperty(int, getBorderRadius, setBorderRadius)
 
 
+class WeatherThread(QThread):
+    weather_updated = pyqtSignal()
+    weather_error = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.data = {}
+
+    def run(self):
+        while True:
+            try:
+                self.data = requests.get("http://10.181.201.165:1908/api/weather", timeout=5).json()
+                self.weather_updated.emit()
+            except:
+                self.weather_error.emit()
+            time.sleep(5 * 60 * 1000)
+
+
 class WeatherInterface(QWidget):
+    styleChanged = pyqtSignal(str, str)
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.gridLayout = QGridLayout(self)
-        self.gridLayout.setContentsMargins(0, 0, 0, 0)
+        self.gridLayout.setContentsMargins(10, 10, 10, 10)
+        self.gridLayout.setVerticalSpacing(8)
+        self.gridLayout.setHorizontalSpacing(16)
 
-        self.iconLabel = ImageLabel("WeatherIcon/CLEAR_DAY.svg")
+        self.icon = "WeatherIcon\\LOADING.svg"
+        self.title = "--°"
+        self.content = "暂无数据"
+        self.skycon = ""
+
+        self.iconLabel = ImageLabel(self)
         self.iconLabel.setFixedSize(48, 48)
         self.iconLabel.setBorderRadius(0, 0, 0, 0)
-        self.titleLabel = TitleLabel(self)
+        self.titleLabel = WeatherTitleLabel(self)
         self.titleLabel.setTextColor(QColor("white"))
-        self.contentLabel = BodyLabel(self)
+        self.contentLabel = WeatherContentLabel(self)
         self.contentLabel.setWordWrap(True)
         self.contentLabel.setTextColor(QColor("white"))
-
-
-        self.titleLabel.setText("28-32°")
-        self.contentLabel.setText("未来2小时内无雨，放心出门吧。")
 
         self.gridLayout.addWidget(self.iconLabel, 0, 0, 1, 1)
         self.gridLayout.addWidget(self.titleLabel, 0, 1, 1, 1)
         self.gridLayout.addWidget(self.contentLabel, 1, 0, 1, 2)
+
+    def updateWeather(self):
+        self.titleLabel.setText(self.title)
+        self.contentLabel.setText(self.content)
+        self.iconLabel.setImage(self.icon)
+        self.iconLabel.setFixedSize(48, 48)
+
+        if self.content == "暂无数据":
+            self.styleChanged.emit("2f2cbc", "4bb4f0")
+        elif "DAY" in self.skycon:
+            self.styleChanged.emit("2f2cbc", "4bb4f0")
+        elif "NIGHT" in self.skycon:
+            self.styleChanged.emit("06050e", "233075")
+        else:
+            self.styleChanged.emit("172830", "57758d")
+
+
+class MottoThread(QThread):
+    motto_updated = pyqtSignal()
+    motto_error = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.data = {}
+
+    def run(self):
+        while True:
+            try:
+                self.data = requests.get("http://10.181.201.165:1908/api/pdb/sentence/today", timeout=5).json()
+                self.motto_updated.emit()
+            except:
+                self.motto_error.emit()
+            time.sleep(5 * 60 * 1000)
 
 
 class MottoInterface(QWidget):
@@ -428,45 +774,90 @@ class MottoInterface(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.vBoxLayout = QVBoxLayout(self)
-        self.vBoxLayout.setContentsMargins(0, 0, 0, 0)
+        self.vBoxLayout.setContentsMargins(10, 10, 10, 10)
 
-        self.chineseLabel = StrongBodyLabel(self)
-        self.englishLabel = BodyLabel(self)
+        self.chineseLabel = MottoLabel(self)
+        self.englishLabel = MottoLabel(self)
         self.chineseLabel.setWordWrap(True)
         self.englishLabel.setWordWrap(True)
+        self.chineseLabel.setTextColor(QColor("black"))
         self.englishLabel.setTextColor(QColor("grey"))
-
-        self.chineseLabel.setText("你若盛开，清风自来。")
-        self.englishLabel.setText("If you look at what you have in life, you'll always have more.")
 
         self.vBoxLayout.addWidget(self.chineseLabel)
         self.vBoxLayout.addWidget(self.englishLabel)
+
+        self.chineseLabel.setText("")
+        self.englishLabel.setText("暂无数据")
+        self.chineseLabel.setHidden(True)
+        self.englishLabel.setAlignment(Qt.AlignCenter)
 
 
 class CountdownInterface(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.vBoxLayout = QVBoxLayout(self)
-        self.vBoxLayout.setContentsMargins(0, 0, 0, 0)
+        self.mainLayout = QVBoxLayout(self)
+        self.mainLayout.setContentsMargins(0, 0, 0, 0)
+        self.mainLayout.setSpacing(0)
 
-        self.eventLabel = SubtitleLabel(self)
-        self.displayLabel = DisplayLabel(self)
+        self.redBlock = QWidget(self)
+        self.redBlock.setFixedHeight(32)
+        self.redLayout = QVBoxLayout(self.redBlock)
+        self.redLayout.setContentsMargins(0, 0, 0, 0)
+        self.eventLabel = CountdownEventLabel(self)
         self.eventLabel.setTextColor(QColor("white"))
         self.eventLabel.setAlignment(Qt.AlignCenter)
+        self.redLayout.addWidget(self.eventLabel, alignment=Qt.AlignCenter)
+
+        self.whiteBlock = QWidget(self)
+        self.whiteLayout = QVBoxLayout(self.whiteBlock)
+        self.whiteLayout.setContentsMargins(0, 0, 0, 0)
+        self.displayLabel = CountdownDisplayLabel(self)
         self.displayLabel.setAlignment(Qt.AlignCenter)
+        self.whiteLayout.addWidget(self.displayLabel, alignment=Qt.AlignCenter)
+        self.updateCountdown()
 
-        self.eventLabel.setText("首考")
-        self.displayLabel.setText("99")
+        self.mainLayout.addWidget(self.redBlock)
+        self.mainLayout.addWidget(self.whiteBlock)
+        self.setLayout(self.mainLayout)
 
-        self.vBoxLayout.addWidget(self.eventLabel)
-        self.vBoxLayout.addWidget(self.displayLabel)
+    def updateCountdown(self):
+        if cfg.Event.value and cfg.Date.value:
+            self.eventLabel.setText(cfg.Event.value)
+            days_diff = QDate.currentDate().daysTo(QDate.fromString(cfg.Date.value, "yyyyMMdd"))
+            self.displayLabel.setText(str(days_diff))
+        else:
+            self.eventLabel.setText("无事件")
+            self.displayLabel.setText("--")
 
 
-class IntegratedCardWidget(CardWidget):
+class IntegratedCard(CardWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.skyconMap = {
+            "CLEAR_DAY": "CLEAR_DAY",
+            "CLEAR_NIGHT": "CLEAR_NIGHT",
+            "PARTLY_CLOUDY_DAY": "PARTLY_CLOUDY_DAY",
+            "PARTLY_CLOUDY_NIGHT": "PARTLY_CLOUDY_NIGHT",
+            "CLOUDY": "CLOUDY",
+            "LIGHT_HAZE": "HAZE",
+            "MODERATE_HAZE": "HAZE",
+            "HEAVY_HAZE": "HAZE",
+            "LIGHT_RAIN": "LIGHT_RAIN",
+            "MODERATE_RAIN": "MODERATE_RAIN",
+            "HEAVY_RAIN": "HEAVY_RAIN",
+            "STORM_RAIN": "HEAVY_RAIN",
+            "FOG": "FOG",
+            "LIGHT_SNOW": "LIGHT_SNOW",
+            "MODERATE_SNOW": "MODERATE_SNOW",
+            "HEAVY_SNOW": "HEAVY_SNOW",
+            "STORM_SNOW": "HEAVY_SNOW",
+            "DUST": "DUST",
+            "SAND": "DUST",
+            "WIND": "WIND"
+        }
+
         self.setFixedSize(200, 200)
         self.setBorderRadius(18)
 
@@ -487,6 +878,8 @@ class IntegratedCardWidget(CardWidget):
         self.weatherInterface = WeatherInterface(self)
         self.mottoInterface = MottoInterface(self)
         self.countdownInterface = CountdownInterface(self)
+        self.weatherInterface.styleChanged.connect(self.setWeatherStyle)
+
         self.stackedWidget.addWidget(self.weatherInterface)
         self.stackedWidget.addWidget(self.mottoInterface)
         self.stackedWidget.addWidget(self.countdownInterface)
@@ -502,6 +895,19 @@ class IntegratedCardWidget(CardWidget):
         self.vBoxLayout.addWidget(self.stackedWidget, Qt.AlignHCenter)
         self.vBoxLayout.addLayout(self.pagerLayout)
         self.updateStyle()
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.onTimeOut)
+        self.timer.start(5000)
+
+        self.weatherThread = WeatherThread()
+        self.weatherThread.weather_updated.connect(self.onWeatherUpdated)
+        self.weatherThread.weather_error.connect(self.onWeatherError)
+        self.weatherThread.start()
+        self.mottoThread = MottoThread()
+        self.mottoThread.motto_updated.connect(self.onMottoUpdated)
+        self.mottoThread.motto_error.connect(self.onMottoError)
+        self.mottoThread.start()
 
     def event(self, event):
         if event.type() == QEvent.Gesture:
@@ -547,38 +953,115 @@ class IntegratedCardWidget(CardWidget):
 
         return False
 
+    def onTimeOut(self):
+        currentIndex = self.stackedWidget.currentIndex()
+        if currentIndex == 0:
+            self.stackedWidget.setCurrentIndex(1)
+            self.setMottoStyle()
+        elif currentIndex == 1:
+            self.stackedWidget.setCurrentIndex(2)
+            self.setCountdownStyle()
+        elif currentIndex == 2:
+            self.stackedWidget.setCurrentIndex(0)
+            self.weatherInterface.updateWeather()
+
+    def onWeatherUpdated(self):
+        self.weatherInterface.title = f"{round(self.weatherThread.data['result']['realtime']['temperature'])}°"
+        self.weatherInterface.content = f"{self.weatherThread.data['result']['forecast_keypoint']}"
+        self.weatherInterface.icon = f"WeatherIcon\\{self.skyconMap[self.weatherThread.data['result']['realtime']['skycon']]}.svg"
+        self.weatherInterface.skycon = self.weatherThread.data['result']['realtime']['skycon']
+
+    def onWeatherError(self):
+        self.weatherInterface.icon = "WeatherIcon\\LOADING.svg"
+        self.weatherInterface.title = "--°"
+        self.weatherInterface.content = "暂无数据"
+        self.weatherInterface.skycon = ""
+
+    def onMottoUpdated(self):
+        self.mottoInterface.chineseLabel.setText(self.mottoThread.data['chs'])
+        self.mottoInterface.englishLabel.setText(self.mottoThread.data['eng'])
+        self.mottoInterface.chineseLabel.setHidden(False)
+        self.mottoInterface.englishLabel.setAlignment(Qt.AlignLeft)
+
+    def onMottoError(self):
+        self.mottoInterface.chineseLabel.setText("")
+        self.mottoInterface.englishLabel.setText("暂无数据")
+        self.mottoInterface.chineseLabel.setHidden(True)
+        self.mottoInterface.englishLabel.setAlignment(Qt.AlignCenter)
+
     def updateStyle(self):
         if self.hPager.currentIndex() == 0:
-            self.setWeatherStyle("2f2cbc", "4bb4f0")
+            self.weatherInterface.updateWeather()
         elif self.hPager.currentIndex() == 1:
             self.setMottoStyle()
         elif self.hPager.currentIndex() == 2:
             self.setCountdownStyle()
 
 
-class MicaWindow(Window):
+class CurriculumCard(CardWidget):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(200)
+        self.setBorderRadius(18)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        self.setMottoStyle()
+
+        self.mainLayout = QVBoxLayout(self)
+        self.mainLayout.setContentsMargins(25, 10, 10, 10)
+        self.mainLayout.setSpacing(0)
+
+        dayOfWeek = QDate.currentDate().dayOfWeek()
+        if dayOfWeek == 1:
+            lst = cfg.Mon.value
+        elif dayOfWeek == 2:
+            lst = cfg.Tue.value
+        elif dayOfWeek == 3:
+            lst = cfg.Wed.value
+        elif dayOfWeek == 4:
+            lst = cfg.Thu.value
+        elif dayOfWeek == 5:
+            lst = cfg.Fri.value
+        elif dayOfWeek == 6:
+            lst = cfg.Sat.value
+        else:
+            lst = cfg.Sun.value
+        for item in lst:
+            btn = CurriculumButton(self)
+            if str(item[1]):
+                btn.setDualText(str(item[0]), str(item[1]))
+            else:
+                btn.setDualText(str(item[0]), ' ')
+            btn.setFixedWidth(150)
+
+            if item[2]:
+                btn.setUrl(QUrl.fromLocalFile(str(item[2])))
+                btn.setToolTip(str(item[2]))
+                btn.installEventFilter(ToolTipFilter(btn, 0, ToolTipPosition.BOTTOM))
+
+            self.mainLayout.addWidget(btn, Qt.AlignCenter)
+
+
+class Main(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setTitleBar(MSFluentTitleBar(self))
-        if isWin11():
-            self.windowEffect.setMicaEffect(self.winId(), isDarkTheme())
+        self.resize(250, QApplication.desktop().availableGeometry().height())
+        self.move(QApplication.desktop().availableGeometry().width() - 250, 0)
 
-
-class Main(MicaWindow):
-
-    def __init__(self):
-        super().__init__()
-        self.resize(600, 600)
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
 
         self.vBoxLayout = QVBoxLayout(self)
-
         self.vBoxLayout.setSpacing(6)
         self.vBoxLayout.setContentsMargins(30, 60, 30, 30)
-        self.vBoxLayout.setAlignment(Qt.AlignTop)
 
-        self.integratedWidgetCard = IntegratedCardWidget(self)
-        self.vBoxLayout.addWidget(self.integratedWidgetCard, alignment=Qt.AlignTop)
+        self.integratedCard = IntegratedCard(self)
+        self.curriculumCard = CurriculumCard(self)
+        self.vBoxLayout.addStretch()
+        self.vBoxLayout.addWidget(self.integratedCard)
+        self.vBoxLayout.addWidget(self.curriculumCard)
+        self.vBoxLayout.addStretch()
 
 
 if __name__ == '__main__':
