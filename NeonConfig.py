@@ -6,6 +6,7 @@ class Config(QConfig):
     Date = ConfigItem("Countdown", "Date", "", ConfigValidator())
 
     FontFamily = ConfigItem("Curriculum", "FontFamily", "Segoe UI", ConfigValidator())
+    FontColor = ConfigItem("Curriculum", "FontColor", "#0179D4", ConfigValidator())
     FontSizeBig = ConfigItem("Curriculum", "FontSizeBig", 24, ConfigValidator())
     FontSizeSmall = ConfigItem("Curriculum", "FontSizeSmall", 14, ConfigValidator())
 

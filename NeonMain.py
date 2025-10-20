@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import os
 import re
 import sys
 import time
@@ -7,17 +8,26 @@ import requests
 from typing import Union
 from NeonConfig import cfg
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QSize, pyqtProperty, QRect, QRectF, QEvent, QUrl, QThread, QDate, \
-    QTimer
-from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient, QIcon, QDesktopServices, QFontMetrics, QFont
+    QTimer, QEasingCurve
+from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient, QIcon, QDesktopServices, QFontMetrics, QFont, \
+    QImage, QPixmap, QImageReader, QMovie
 from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QStackedWidget, QWidget, QGridLayout, QListWidget, \
-    QListWidgetItem, QFrame, QSwipeGesture, QPushButton, QSizePolicy, QStyleOptionButton, QStyle, QLabel
+    QListWidgetItem, QFrame, QSwipeGesture, QPushButton, QSizePolicy, QStyleOptionButton, QStyle, QLabel, QScrollArea, \
+    QScroller, QSystemTrayIcon, QAction
+from PyQt5.QtSvg import QSvgRenderer
 from qfluentwidgets import FluentIcon, isDarkTheme, HorizontalPipsPager, drawIcon, PipsScrollButtonDisplayMode, \
-    ImageLabel, SmoothScrollBar, FluentStyleSheet, ToolTipFilter, ToolTipPosition, setTheme, Theme, setFont, \
-    FluentIconBase, themeColor, qconfig, setCustomStyleSheet, getFont
-from qfluentwidgets.components.widgets.menu import LabelContextMenu
+    SmoothScrollBar, FluentStyleSheet, ToolTipFilter, ToolTipPosition, Theme, setFont, FluentIconBase, themeColor, \
+    qconfig, setCustomStyleSheet, getFont, SmoothScrollDelegate, FluentFontIconBase
+from qfluentwidgets.components.widgets.menu import LabelContextMenu, RoundMenu
 from qfluentwidgets.common.animation import BackgroundAnimationWidget
 from qfluentwidgets.components.widgets.pips_pager import PipsDelegate, ScrollButton
 from qfluentwidgets.common.overload import singledispatchmethod
+
+
+class FluentFontIcon(FluentFontIconBase):
+
+    def path(self, theme=Theme.AUTO):
+        return "Font/SegoeIcons.ttf"
 
 
 class PipsPager(QListWidget):
@@ -246,6 +256,38 @@ class HorizontalPipsPager(PipsPager):
         super().__init__(Qt.Horizontal, parent)
 
 
+class SmoothScrollArea(QScrollArea):
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.viewport().setAttribute(Qt.WA_AcceptTouchEvents, True)
+        self.delegate = SmoothScrollDelegate(self, True)
+        QScroller.grabGesture(self.viewport(), QScroller.TouchGesture)
+
+    def setScrollAnimation(self, orient, duration, easing=QEasingCurve.OutCubic):
+        """ set scroll animation
+
+        Parameters
+        ----------
+        orient: Orient
+            scroll orientation
+
+        duration: int
+            scroll duration
+
+        easing: QEasingCurve
+            animation type
+        """
+        bar = self.delegate.hScrollBar if orient == Qt.Horizontal else self.delegate.vScrollBar
+        bar.setScrollAnimation(duration, easing)
+
+    def enableTransparentBackground(self):
+        self.setStyleSheet("QScrollArea{border: none; background: transparent}")
+
+        if self.widget():
+            self.widget().setStyleSheet("QWidget{background: transparent}")
+
+
 class FluentLabelBase(QLabel):
     """ Fluent label base class
 
@@ -372,6 +414,229 @@ class CountdownDisplayLabel(FluentLabelBase):
         return getFont(72, QFont.Bold)
 
 
+class ImageLabel(QLabel):
+    """ Image label
+
+    Constructors
+    ------------
+    * ImageLabel(`parent`: QWidget = None)
+    * ImageLabel(`image`: str | QImage | QPixmap, `parent`: QWidget = None)
+    """
+
+    clicked = pyqtSignal()
+
+    @singledispatchmethod
+    def __init__(self, parent: QWidget = None):
+        super().__init__(parent)
+        self.image = QImage()
+        self.svgRenderer = None
+        self.setBorderRadius(0, 0, 0, 0)
+        self._postInit()
+
+    @__init__.register
+    def _(self, image: str, parent=None):
+        self.__init__(parent)
+        self.setImage(image)
+
+    @__init__.register
+    def _(self, image: QImage, parent=None):
+        self.__init__(parent)
+        self.setImage(image)
+
+    @__init__.register
+    def _(self, image: QPixmap, parent=None):
+        self.__init__(parent)
+        self.setImage(image)
+
+    def _postInit(self):
+        pass
+
+    def _onFrameChanged(self, index: int):
+        self.image = self.movie().currentImage()
+        self.update()
+
+    def setBorderRadius(self, topLeft: int, topRight: int, bottomLeft: int, bottomRight: int):
+        """ set the border radius of image """
+        self._topLeftRadius = topLeft
+        self._topRightRadius = topRight
+        self._bottomLeftRadius = bottomLeft
+        self._bottomRightRadius = bottomRight
+        self.update()
+
+    def setImage(self, image: Union[str, QPixmap, QImage] = None):
+        """ set the image of label """
+        self.svgRenderer = None
+
+        if isinstance(image, str):
+            if image.lower().endswith('.svg'):
+                self.svgRenderer = QSvgRenderer(image)
+                if self.svgRenderer.isValid():
+                    default_size = self.svgRenderer.defaultSize()
+                    if not default_size.isValid():
+                        default_size = QSize(100, 100)
+                    self.setFixedSize(default_size)
+                else:
+                    reader = QImageReader(image)
+                    if reader.supportsAnimation():
+                        self.setMovie(QMovie(image))
+                    else:
+                        self.image = reader.read()
+            else:
+                reader = QImageReader(image)
+                if reader.supportsAnimation():
+                    self.setMovie(QMovie(image))
+                else:
+                    self.image = reader.read()
+                    self.setFixedSize(self.image.size())
+        elif isinstance(image, QPixmap):
+            self.image = image.toImage()
+            self.setFixedSize(self.image.size())
+        elif isinstance(image, QImage):
+            self.image = image
+            self.setFixedSize(self.image.size())
+        else:
+            self.image = QImage()
+
+        self.update()
+
+    def scaledToWidth(self, width: int):
+        if self.isNull():
+            return
+
+        if self.svgRenderer:
+            default_size = self.svgRenderer.defaultSize()
+            if default_size.isValid() and default_size.width() > 0:
+                h = int(width * default_size.height() / default_size.width())
+                self.setFixedSize(width, h)
+            else:
+                self.setFixedSize(width, width)
+        else:
+            h = int(width / self.image.width() * self.image.height())
+            self.setFixedSize(width, h)
+
+            if self.movie():
+                self.movie().setScaledSize(QSize(width, h))
+
+    def scaledToHeight(self, height: int):
+        if self.isNull():
+            return
+
+        if self.svgRenderer:
+            default_size = self.svgRenderer.defaultSize()
+            if default_size.isValid() and default_size.height() > 0:
+                w = int(height * default_size.width() / default_size.height())
+                self.setFixedSize(w, height)
+            else:
+                self.setFixedSize(height, height)
+        else:
+            w = int(height / self.image.height() * self.image.width())
+            self.setFixedSize(w, height)
+
+            if self.movie():
+                self.movie().setScaledSize(QSize(w, height))
+
+    def setScaledSize(self, size: QSize):
+        if self.isNull():
+            return
+
+        self.setFixedSize(size)
+
+        if self.movie():
+            self.movie().setScaledSize(size)
+
+    def isNull(self):
+        return not self.svgRenderer and self.image.isNull()
+
+    def mouseReleaseEvent(self, e):
+        super().mouseReleaseEvent(e)
+        self.clicked.emit()
+
+    def setPixmap(self, pixmap: QPixmap):
+        self.setImage(pixmap)
+
+    def pixmap(self) -> QPixmap:
+        if self.svgRenderer:
+            pixmap = QPixmap(self.size())
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            self.svgRenderer.render(painter, QRectF(pixmap.rect()))
+            painter.end()
+            return pixmap
+        return QPixmap.fromImage(self.image)
+
+    def setMovie(self, movie: QMovie):
+        super().setMovie(movie)
+        self.movie().start()
+        self.image = self.movie().currentImage()
+        self.movie().frameChanged.connect(self._onFrameChanged)
+
+    def paintEvent(self, e):
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+
+        path = QPainterPath()
+        w, h = self.width(), self.height()
+        path.moveTo(self._topLeftRadius, 0)
+        path.lineTo(w - self._topRightRadius, 0)
+        d = self._topRightRadius * 2
+        path.arcTo(w - d, 0, d, d, 90, -90)
+        path.lineTo(w, h - self._bottomRightRadius)
+        d = self._bottomRightRadius * 2
+        path.arcTo(w - d, h - d, d, d, 0, -90)
+        path.lineTo(self._bottomLeftRadius, h)
+        d = self._bottomLeftRadius * 2
+        path.arcTo(0, h - d, d, d, -90, -90)
+        path.lineTo(0, self._topLeftRadius)
+        d = self._topLeftRadius * 2
+        path.arcTo(0, 0, d, d, -180, -90)
+        painter.setPen(Qt.NoPen)
+        painter.setClipPath(path)
+
+        if self.svgRenderer and self.svgRenderer.isValid():
+            self.svgRenderer.render(painter, QRectF(0, 0, w, h))
+        elif not self.image.isNull():
+            image = self.image.scaled(
+                self.size() * self.devicePixelRatioF(),
+                Qt.IgnoreAspectRatio,
+                Qt.SmoothTransformation
+            )
+            image.setDevicePixelRatio(self.devicePixelRatioF())
+            painter.drawImage(self.rect(), image)
+
+    @pyqtProperty(int)
+    def topLeftRadius(self):
+        return self._topLeftRadius
+
+    @topLeftRadius.setter
+    def topLeftRadius(self, radius: int):
+        self.setBorderRadius(radius, self.topRightRadius, self.bottomLeftRadius, self.bottomRightRadius)
+
+    @pyqtProperty(int)
+    def topRightRadius(self):
+        return self._topRightRadius
+
+    @topRightRadius.setter
+    def topRightRadius(self, radius: int):
+        self.setBorderRadius(self.topLeftRadius, radius, self.bottomLeftRadius, self.bottomRightRadius)
+
+    @pyqtProperty(int)
+    def bottomLeftRadius(self):
+        return self._bottomLeftRadius
+
+    @bottomLeftRadius.setter
+    def bottomLeftRadius(self, radius: int):
+        self.setBorderRadius(self.topLeftRadius, self.topRightRadius, radius, self.bottomRightRadius)
+
+    @pyqtProperty(int)
+    def bottomRightRadius(self):
+        return self._bottomRightRadius
+
+    @bottomRightRadius.setter
+    def bottomRightRadius(self, radius: int):
+        self.setBorderRadius(
+            self.topLeftRadius, self.topRightRadius, self.bottomLeftRadius, radius)
+
+
 class CurriculumButton(QPushButton):
     @singledispatchmethod
     def __init__(self, parent: QWidget = None):
@@ -382,12 +647,13 @@ class CurriculumButton(QPushButton):
         self._large_size = cfg.FontSizeBig.value
         self._small_size = cfg.FontSizeSmall.value
         self._spacing = 0
+        self._custom_color = None
 
         self.setStyleSheet(
             "QPushButton {font: '" + cfg.FontFamily.value + "'; padding: 6px 12px 6px 12px; color: rgb(0, 159, 170); border: none; border-radius: 6px; background-color: transparent;}"
-                                                            "QPushButton:hover {color: rgb(0, 159, 170); background-color: rgba(0, 0, 0, 10); border: none;}"
-                                                            "QPushButton:pressed {color: rgb(0, 159, 170); background-color: rgba(0, 0, 0, 6); border: none;}"
-                                                            "QPushButton:disabled {color: rgba(0, 0, 0, 0.43); background-color: transparent; border: none;}"
+            "QPushButton:hover {color: rgb(0, 159, 170); background-color: rgba(0, 0, 0, 10); border: none;}"
+            "QPushButton:pressed {color: rgb(0, 159, 170); background-color: rgba(0, 0, 0, 6); border: none;}"
+            "QPushButton:disabled {color: rgba(0, 0, 0, 0.43); background-color: transparent; border: none;}"
         )
         self.setCursor(Qt.PointingHandCursor)
         setFont(self)
@@ -415,8 +681,14 @@ class CurriculumButton(QPushButton):
         self._url = QUrl(url)
 
     def _onClicked(self):
-        if self.getUrl().isValid():
-            QDesktopServices.openUrl(self.getUrl())
+        url = self.getUrl()
+        if url.isValid():
+            if url.scheme() == 'file':
+                local_path = url.toLocalFile()
+                if os.path.exists(local_path):
+                    QDesktopServices.openUrl(url)
+            else:
+                QDesktopServices.openUrl(url)
 
     def _drawIcon(self, icon, painter, rect, state=QIcon.Off):
         if isinstance(icon, FluentIconBase) and self.isEnabled():
@@ -468,6 +740,15 @@ class CurriculumButton(QPushButton):
                 hint.setHeight(height)
         return hint
 
+    def setTextColor(self, hex_color: str):
+        try:
+            self._custom_color = QColor(hex_color)
+            if not self._custom_color.isValid():
+                self._custom_color = None
+            self.update()
+        except:
+            self._custom_color = None
+
     def paintEvent(self, event):
         if not self.hasDualText():
             return super().paintEvent(event)
@@ -503,9 +784,10 @@ class CurriculumButton(QPushButton):
 
         base_y = content_rect.y() + (content_rect.height() + fm_large.ascent()) / 2 - fm_large.descent()
 
-        color = QColor(0, 159, 170)
-
-        if not self.isEnabled():
+        color = self._custom_color
+        if self._custom_color is not None:
+            color = self._custom_color
+        elif not self.isEnabled():
             color = QColor(0, 0, 0, 109)
         elif self.styleSheet():
             style = self.styleSheet()
@@ -520,6 +802,10 @@ class CurriculumButton(QPushButton):
                         color = QColor(r, g, b, a)
                 else:
                     color = QColor(color_str)
+            else:
+                color = QColor(0, 159, 170)
+        else:
+            color = QColor(0, 159, 170)
 
         painter.setPen(color)
 
@@ -695,10 +981,11 @@ class WeatherThread(QThread):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.isThreadRunning = True
         self.data = {}
 
     def run(self):
-        while True:
+        while self.isThreadRunning:
             try:
                 self.data = requests.get("http://10.181.201.165:1908/api/weather", timeout=5).json()
                 self.weather_updated.emit()
@@ -717,13 +1004,8 @@ class WeatherInterface(QWidget):
         self.gridLayout.setVerticalSpacing(8)
         self.gridLayout.setHorizontalSpacing(16)
 
-        self.icon = "WeatherIcon\\LOADING.svg"
-        self.title = "--°"
-        self.content = "暂无数据"
         self.skycon = ""
-
         self.iconLabel = ImageLabel(self)
-        self.iconLabel.setFixedSize(48, 48)
         self.iconLabel.setBorderRadius(0, 0, 0, 0)
         self.titleLabel = WeatherTitleLabel(self)
         self.titleLabel.setTextColor(QColor("white"))
@@ -731,24 +1013,32 @@ class WeatherInterface(QWidget):
         self.contentLabel.setWordWrap(True)
         self.contentLabel.setTextColor(QColor("white"))
 
+        self.iconLabel.setImage("WeatherIcon\\LOADING.svg")
+        self.iconLabel.setFixedSize(48, 48)
+        self.titleLabel.setText("--°")
+        self.contentLabel.setText("暂无数据")
+
         self.gridLayout.addWidget(self.iconLabel, 0, 0, 1, 1)
         self.gridLayout.addWidget(self.titleLabel, 0, 1, 1, 1)
         self.gridLayout.addWidget(self.contentLabel, 1, 0, 1, 2)
 
     def updateWeather(self):
-        self.titleLabel.setText(self.title)
-        self.contentLabel.setText(self.content)
-        self.iconLabel.setImage(self.icon)
-        self.iconLabel.setFixedSize(48, 48)
-
-        if self.content == "暂无数据":
+        if self.contentLabel.text() == "暂无数据":
             self.styleChanged.emit("2f2cbc", "4bb4f0")
         elif "DAY" in self.skycon:
             self.styleChanged.emit("2f2cbc", "4bb4f0")
         elif "NIGHT" in self.skycon:
             self.styleChanged.emit("06050e", "233075")
-        else:
+        elif "RAIN" in self.skycon or "HAZE" in self.skycon:
             self.styleChanged.emit("172830", "57758d")
+        elif "SNOW" in self.skycon:
+            self.styleChanged.emit("b1ccea", "afcee2")
+        elif self.skycon == "CLOUDY" or self.skycon == "FOG" or self.skycon == "WIND":
+            self.styleChanged.emit("9bc0da", "cee4f1")
+        elif self.skycon == "DUST" or self.skycon == "SAND":
+            self.styleChanged.emit("d5b603", "ddab5f")
+        else:
+            self.styleChanged.emit("2f2cbc", "4bb4f0")
 
 
 class MottoThread(QThread):
@@ -757,10 +1047,11 @@ class MottoThread(QThread):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
+        self.isThreadRunning = True
         self.data = {}
 
     def run(self):
-        while True:
+        while self.isThreadRunning:
             try:
                 self.data = requests.get("http://10.181.201.165:1908/api/pdb/sentence/today", timeout=5).json()
                 self.motto_updated.emit()
@@ -898,7 +1189,7 @@ class IntegratedCard(CardWidget):
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.onTimeOut)
-        self.timer.start(5000)
+        self.timer.start(10000)
 
         self.weatherThread = WeatherThread()
         self.weatherThread.weather_updated.connect(self.onWeatherUpdated)
@@ -966,15 +1257,18 @@ class IntegratedCard(CardWidget):
             self.weatherInterface.updateWeather()
 
     def onWeatherUpdated(self):
-        self.weatherInterface.title = f"{round(self.weatherThread.data['result']['realtime']['temperature'])}°"
-        self.weatherInterface.content = f"{self.weatherThread.data['result']['forecast_keypoint']}"
-        self.weatherInterface.icon = f"WeatherIcon\\{self.skyconMap[self.weatherThread.data['result']['realtime']['skycon']]}.svg"
+        self.weatherInterface.titleLabel.setText(f"{round(self.weatherThread.data['result']['realtime']['temperature'])}°")
+        self.weatherInterface.contentLabel.setText(f"{self.weatherThread.data['result']['forecast_keypoint']}")
+        icon = self.skyconMap.get(self.weatherThread.data['result']['realtime']['skycon'], "LOADING")
+        self.weatherInterface.iconLabel.setImage(f"WeatherIcon\\{icon}.svg")
+        self.weatherInterface.iconLabel.setFixedSize(48, 48)
         self.weatherInterface.skycon = self.weatherThread.data['result']['realtime']['skycon']
 
     def onWeatherError(self):
-        self.weatherInterface.icon = "WeatherIcon\\LOADING.svg"
-        self.weatherInterface.title = "--°"
-        self.weatherInterface.content = "暂无数据"
+        self.weatherInterface.iconLabel.setImage("WeatherIcon\\LOADING.svg")
+        self.weatherInterface.iconLabel.setFixedSize(48, 48)
+        self.weatherInterface.titleLabel.setText("--°")
+        self.weatherInterface.contentLabel.setText("暂无数据")
         self.weatherInterface.skycon = ""
 
     def onMottoUpdated(self):
@@ -1007,9 +1301,30 @@ class CurriculumCard(CardWidget):
         self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         self.setMottoStyle()
 
+        self.nullLabel = MottoLabel(self)
+        self.nullLabel.setTextColor(QColor('grey'))
+        self.nullLabel.setText("无课程")
+        self.nullLabel.setHidden(True)
+
         self.mainLayout = QVBoxLayout(self)
-        self.mainLayout.setContentsMargins(25, 10, 10, 10)
+        self.mainLayout.setContentsMargins(0, 0, 0, 0)
         self.mainLayout.setSpacing(0)
+
+        self.scrollArea = SmoothScrollArea(self)
+        self.scrollArea.setWidgetResizable(True)
+        self.scrollArea.enableTransparentBackground()
+
+        self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        self.contentWidget = QWidget()
+        self.contentWidget.setStyleSheet("background: transparent;")
+        self.contentLayout = QVBoxLayout(self.contentWidget)
+        self.contentLayout.setContentsMargins(25, 10, 10, 10)
+        self.contentLayout.setSpacing(0)
+        self.contentLayout.addWidget(self.nullLabel, Qt.AlignCenter)
+
+        self.scrollArea.setWidget(self.contentWidget)
+        self.mainLayout.addWidget(self.scrollArea)
 
         dayOfWeek = QDate.currentDate().dayOfWeek()
         if dayOfWeek == 1:
@@ -1026,26 +1341,48 @@ class CurriculumCard(CardWidget):
             lst = cfg.Sat.value
         else:
             lst = cfg.Sun.value
-        for item in lst:
-            btn = CurriculumButton(self)
-            if str(item[1]):
-                btn.setDualText(str(item[0]), str(item[1]))
+
+        if lst:
+            for item in lst:
+                btn = CurriculumButton(self.contentWidget)
+                if str(item[1]):
+                    btn.setDualText(str(item[0]), str(item[1]))
+                else:
+                    btn.setDualText(str(item[0]), ' ')
+                btn.setFixedWidth(150)
+                btn.setTextColor(cfg.FontColor.value)
+
+                if item[2]:
+                    btn.setUrl(QUrl.fromLocalFile(str(item[2])))
+                    btn.setToolTip(str(item[2]))
+                    btn.installEventFilter(ToolTipFilter(btn, 0, ToolTipPosition.BOTTOM))
+
+                self.contentLayout.addWidget(btn, Qt.AlignCenter)
+        else:
+            self.nullLabel.setHidden(False)
+
+        self.contentLayout.addStretch()
+
+        if self.scrollArea and self.contentWidget:
+            contentHeight = self.contentWidget.sizeHint().height()
+            maxHeight = QApplication.desktop().availableGeometry().height() - 260
+            if contentHeight > maxHeight:
+                self.setFixedHeight(maxHeight)
+                self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            elif contentHeight <= 400:
+                self.setFixedHeight(400)
+                self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             else:
-                btn.setDualText(str(item[0]), ' ')
-            btn.setFixedWidth(150)
-
-            if item[2]:
-                btn.setUrl(QUrl.fromLocalFile(str(item[2])))
-                btn.setToolTip(str(item[2]))
-                btn.installEventFilter(ToolTipFilter(btn, 0, ToolTipPosition.BOTTOM))
-
-            self.mainLayout.addWidget(btn, Qt.AlignCenter)
+                self.setFixedHeight(contentHeight)
+                self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
 
 class Main(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.setWindowTitle("Neon")
+        self.setWindowIcon(QIcon('icon.png'))
         self.resize(250, QApplication.desktop().availableGeometry().height())
         self.move(QApplication.desktop().availableGeometry().width() - 250, 0)
 
@@ -1054,7 +1391,7 @@ class Main(QWidget):
 
         self.vBoxLayout = QVBoxLayout(self)
         self.vBoxLayout.setSpacing(6)
-        self.vBoxLayout.setContentsMargins(30, 60, 30, 30)
+        self.vBoxLayout.setContentsMargins(30, 30, 30, 30)
 
         self.integratedCard = IntegratedCard(self)
         self.curriculumCard = CurriculumCard(self)
@@ -1062,6 +1399,77 @@ class Main(QWidget):
         self.vBoxLayout.addWidget(self.integratedCard)
         self.vBoxLayout.addWidget(self.curriculumCard)
         self.vBoxLayout.addStretch()
+
+        self._tray_icon_menu = RoundMenu()
+        self.tray_icon = QSystemTrayIcon(self)
+        self.tray_icon.setIcon(QIcon("icon.png"))
+        self.tray_icon.setToolTip("Neon")
+        self.createActions()
+        self.createTrayIcon()
+        self.tray_icon.activated.connect(self.trayIconActivated)
+
+    def trayIconActivated(self, reason):
+        if reason == QSystemTrayIcon.ActivationReason.Trigger or reason == QSystemTrayIcon.ActivationReason.Context:
+            self._tray_icon_menu.exec(self.tray_icon.geometry().center())
+
+    def createActions(self):
+        self._refresh_action = QAction(FluentFontIcon("\ue72c").icon(), "刷新", parent=self)
+        self._refresh_action.triggered.connect(self.refresh)
+
+        self._setting_action = QAction(FluentFontIcon("\ue713").icon(), "设置", self)
+        self._help_action = QAction(FluentFontIcon("\uea6b").icon(), "帮助", self)
+        # self._setting_action.triggered.connect()
+        # self._help_action.triggered.connect()
+
+        self._hide_action = QAction(FluentFontIcon("\uecc9").icon(), "隐藏", parent=self)
+        self._restore_action = QAction(FluentFontIcon("\uecc8").icon(), "显示", parent=self)
+        self._hide_action.triggered.connect(self.hide)
+        self._restore_action.triggered.connect(self.show)
+
+        self._quit_action = QAction(FluentFontIcon("\ue7e8").icon(), "退出", self)
+        self._quit_action.triggered.connect(self.quitApp)
+
+    def createTrayIcon(self):
+        self._tray_icon_menu.addAction(self._refresh_action)
+        self._tray_icon_menu.addSeparator()
+        self._tray_icon_menu.addAction(self._setting_action)
+        self._tray_icon_menu.addAction(self._help_action)
+        self._tray_icon_menu.addSeparator()
+        self._tray_icon_menu.addAction(self._restore_action)
+        self._tray_icon_menu.addAction(self._hide_action)
+        self._tray_icon_menu.addSeparator()
+        self._tray_icon_menu.addAction(self._quit_action)
+        self.tray_icon.setContextMenu(self._tray_icon_menu)
+        self.tray_icon.show()
+
+    def refresh(self):
+        self.integratedCard.weatherThread.isThreadRunning = False
+        self.integratedCard.mottoThread.isThreadRunning = False
+        self.integratedCard.weatherThread.terminate()
+        self.integratedCard.mottoThread.terminate()
+
+        self.integratedCard.weatherThread = WeatherThread()
+        self.integratedCard.mottoThread = MottoThread()
+
+        self.integratedCard.weatherThread.weather_updated.connect(self.integratedCard.onWeatherUpdated)
+        self.integratedCard.weatherThread.weather_error.connect(self.integratedCard.onWeatherError)
+        self.integratedCard.mottoThread.motto_updated.connect(self.integratedCard.onMottoUpdated)
+        self.integratedCard.mottoThread.motto_error.connect(self.integratedCard.onMottoError)
+
+        self.integratedCard.weatherThread.start()
+        self.integratedCard.mottoThread.start()
+
+        self.integratedCard.countdownInterface.updateCountdown()
+
+    def quitApp(self):
+        self.hide()
+
+        self.integratedCard.weatherThread.isThreadRunning = False
+        self.integratedCard.mottoThread.isThreadRunning = False
+        self.integratedCard.weatherThread.terminate()
+        self.integratedCard.mottoThread.terminate()
+
+        QApplication.quit()
 
 
 if __name__ == '__main__':
