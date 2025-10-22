@@ -5,6 +5,7 @@ import re
 import sys
 import time
 import requests
+import NeonResource
 from typing import Union
 from NeonConfig import cfg
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QSize, pyqtProperty, QRect, QRectF, QEvent, QUrl, QThread, QDate, \
@@ -1013,7 +1014,7 @@ class WeatherInterface(QWidget):
         self.contentLabel.setWordWrap(True)
         self.contentLabel.setTextColor(QColor("white"))
 
-        self.iconLabel.setImage("WeatherIcon\\LOADING.svg")
+        self.iconLabel.setImage(":/LOADING.svg")
         self.iconLabel.setFixedSize(48, 48)
         self.titleLabel.setText("--°")
         self.contentLabel.setText("暂无数据")
@@ -1260,12 +1261,12 @@ class IntegratedCard(CardWidget):
         self.weatherInterface.titleLabel.setText(f"{round(self.weatherThread.data['result']['realtime']['temperature'])}°")
         self.weatherInterface.contentLabel.setText(f"{self.weatherThread.data['result']['forecast_keypoint']}")
         icon = self.skyconMap.get(self.weatherThread.data['result']['realtime']['skycon'], "LOADING")
-        self.weatherInterface.iconLabel.setImage(f"WeatherIcon\\{icon}.svg")
+        self.weatherInterface.iconLabel.setImage(f":/{icon}.svg")
         self.weatherInterface.iconLabel.setFixedSize(48, 48)
         self.weatherInterface.skycon = self.weatherThread.data['result']['realtime']['skycon']
 
     def onWeatherError(self):
-        self.weatherInterface.iconLabel.setImage("WeatherIcon\\LOADING.svg")
+        self.weatherInterface.iconLabel.setImage(":/LOADING.svg")
         self.weatherInterface.iconLabel.setFixedSize(48, 48)
         self.weatherInterface.titleLabel.setText("--°")
         self.weatherInterface.contentLabel.setText("暂无数据")
@@ -1382,7 +1383,7 @@ class Main(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Neon")
-        self.setWindowIcon(QIcon('icon.png'))
+        self.setWindowIcon(QIcon(':/icon.png'))
         self.resize(250, QApplication.desktop().availableGeometry().height())
         self.move(QApplication.desktop().availableGeometry().width() - 250, 0)
 
@@ -1402,7 +1403,7 @@ class Main(QWidget):
 
         self._tray_icon_menu = RoundMenu()
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(QIcon("icon.png"))
+        self.tray_icon.setIcon(QIcon(":/icon.png"))
         self.tray_icon.setToolTip("Neon")
         self.createActions()
         self.createTrayIcon()
@@ -1418,7 +1419,7 @@ class Main(QWidget):
 
         self._setting_action = QAction(FluentFontIcon("\ue713").icon(), "设置", self)
         self._help_action = QAction(FluentFontIcon("\uea6b").icon(), "帮助", self)
-        # self._setting_action.triggered.connect()
+        self._setting_action.triggered.connect(self.openSetting)
         # self._help_action.triggered.connect()
 
         self._hide_action = QAction(FluentFontIcon("\uecc9").icon(), "隐藏", parent=self)
@@ -1460,6 +1461,9 @@ class Main(QWidget):
         self.integratedCard.mottoThread.start()
 
         self.integratedCard.countdownInterface.updateCountdown()
+
+    def openSetting(self):
+        os.startfile(os.path.abspath("./config/config.json"))
 
     def quitApp(self):
         self.hide()
