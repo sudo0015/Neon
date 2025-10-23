@@ -5,9 +5,11 @@ import re
 import sys
 import time
 import requests
+import portalocker
 import NeonResource
 from typing import Union
 from NeonConfig import cfg
+from darkdetect import isDark
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QSize, pyqtProperty, QRect, QRectF, QEvent, QUrl, QThread, QDate, \
     QTimer, QEasingCurve
 from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient, QIcon, QDesktopServices, QFontMetrics, QFont, \
@@ -18,11 +20,29 @@ from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QStackedWidg
 from PyQt5.QtSvg import QSvgRenderer
 from qfluentwidgets import FluentIcon, isDarkTheme, HorizontalPipsPager, drawIcon, PipsScrollButtonDisplayMode, \
     SmoothScrollBar, FluentStyleSheet, ToolTipFilter, ToolTipPosition, Theme, setFont, FluentIconBase, themeColor, \
-    qconfig, setCustomStyleSheet, getFont, SmoothScrollDelegate, FluentFontIconBase
+    qconfig, setCustomStyleSheet, getFont, SmoothScrollDelegate, FluentFontIconBase, setTheme
 from qfluentwidgets.components.widgets.menu import LabelContextMenu, RoundMenu
 from qfluentwidgets.common.animation import BackgroundAnimationWidget
 from qfluentwidgets.components.widgets.pips_pager import PipsDelegate, ScrollButton
 from qfluentwidgets.common.overload import singledispatchmethod
+
+
+class Mutex:
+    def __init__(self):
+        self.file = None
+
+    def __enter__(self):
+        self.file = open('RandomMain.lockfile', 'w')
+        try:
+            portalocker.lock(self.file, portalocker.LOCK_EX | portalocker.LOCK_NB)
+        except portalocker.AlreadyLocked:
+            sys.exit()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.file:
+            portalocker.unlock(self.file)
+            self.file.close()
+            os.remove('RandomMain.lockfile')
 
 
 class FluentFontIcon(FluentFontIconBase):
@@ -992,7 +1012,7 @@ class WeatherThread(QThread):
                 self.weather_updated.emit()
             except:
                 self.weather_error.emit()
-            time.sleep(5 * 60 * 1000)
+            time.sleep(5 * 60)
 
 
 class WeatherInterface(QWidget):
@@ -1058,7 +1078,7 @@ class MottoThread(QThread):
                 self.motto_updated.emit()
             except:
                 self.motto_error.emit()
-            time.sleep(5 * 60 * 1000)
+            time.sleep(60 * 60)
 
 
 class MottoInterface(QWidget):
@@ -1477,12 +1497,21 @@ class Main(QWidget):
 
 
 if __name__ == '__main__':
-    QApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+    if (len(sys.argv) == 2 and sys.argv[1] == '--force-start') or cfg.AutoRun.value:
+        with Mutex():
+            QApplication.setHighDpiScaleFactorRoundingPolicy(
+                Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
+            QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+            QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
 
-    app = QApplication(sys.argv)
-    w = Main()
-    w.show()
-    app.exec()
+            if isDark():
+                setTheme(Theme.DARK)
+            else:
+                setTheme(Theme.LIGHT)
+
+            app = QApplication(sys.argv)
+            w = Main()
+            w.show()
+            app.exec()
+    else:
+        sys.exit()

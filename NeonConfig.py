@@ -2,6 +2,8 @@ from qfluentwidgets import qconfig, QConfig, ConfigItem, OptionsConfigItem, Bool
     FolderValidator, RangeConfigItem, RangeValidator, EnumSerializer, ConfigValidator
 
 class Config(QConfig):
+    AutoRun = ConfigItem("MainWindow", "AutoRun", True, BoolValidator())
+
     Event = ConfigItem("Countdown", "Event", "", ConfigValidator())
     Date = ConfigItem("Countdown", "Date", "", ConfigValidator())
 
@@ -20,6 +22,6 @@ class Config(QConfig):
 
 
 YEAR = "2025"
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 cfg = Config()
 qconfig.load("config/config.json", cfg)
