@@ -1312,7 +1312,7 @@ class IntegratedCard(CardWidget):
 
     def updateStyle(self):
         if self.hPager.currentIndex() == 0:
-            self.weatherInterface.updateWeather()
+            self.weatherInterface.updateStyle()
         elif self.hPager.currentIndex() == 1:
             self.setMottoStyle()
         elif self.hPager.currentIndex() == 2:
