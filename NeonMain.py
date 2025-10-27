@@ -1295,6 +1295,9 @@ class IntegratedCard(CardWidget):
         self.weatherInterface.contentLabel.setText("暂无数据")
         self.weatherInterface.skycon = ""
 
+        if self.hPager.currentIndex() == 0:
+            self.weatherInterface.updateStyle()
+
     def onMottoUpdated(self):
         self.mottoInterface.chineseLabel.setText(self.mottoThread.data['chs'])
         self.mottoInterface.englishLabel.setText(self.mottoThread.data['eng'])
