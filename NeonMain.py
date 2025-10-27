@@ -1285,6 +1285,9 @@ class IntegratedCard(CardWidget):
         self.weatherInterface.iconLabel.setFixedSize(48, 48)
         self.weatherInterface.skycon = self.weatherThread.data['result']['realtime']['skycon']
 
+        if self.hPager.currentIndex() == 0:
+            self.weatherInterface.updateStyle()
+
     def onWeatherError(self):
         self.weatherInterface.iconLabel.setImage(":/LOADING.svg")
         self.weatherInterface.iconLabel.setFixedSize(48, 48)
