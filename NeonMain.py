@@ -1275,7 +1275,7 @@ class IntegratedCard(CardWidget):
             self.setCountdownStyle()
         elif currentIndex == 2:
             self.stackedWidget.setCurrentIndex(0)
-            self.weatherInterface.updateWeather()
+            self.weatherInterface.updateStyle()
 
     def onWeatherUpdated(self):
         self.weatherInterface.titleLabel.setText(f"{round(self.weatherThread.data['result']['realtime']['temperature'])}°")
