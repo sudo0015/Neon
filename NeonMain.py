@@ -1043,7 +1043,7 @@ class WeatherInterface(QWidget):
         self.gridLayout.addWidget(self.titleLabel, 0, 1, 1, 1)
         self.gridLayout.addWidget(self.contentLabel, 1, 0, 1, 2)
 
-    def updateWeather(self):
+    def updateStyle(self):
         if self.contentLabel.text() == "暂无数据":
             self.styleChanged.emit("2f2cbc", "4bb4f0")
         elif "DAY" in self.skycon:
