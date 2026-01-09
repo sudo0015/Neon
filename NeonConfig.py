@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from qfluentwidgets import qconfig, QConfig, ConfigItem, BoolValidator, ConfigValidator
+from qfluentwidgets import qconfig, QConfig, ConfigItem, BoolValidator, ConfigValidator, OptionsConfigItem, \
+    OptionsValidator
+
 
 class Config(QConfig):
     AutoRun = ConfigItem("MainWindow", "AutoRun", True, BoolValidator())
+    Theme = OptionsConfigItem("MainWindow", "Theme", "Auto", OptionsValidator(["Light", "Dark", "Auto"]))
 
     Event = ConfigItem("Countdown", "Event", "", ConfigValidator())
     Date = ConfigItem("Countdown", "Date", "", ConfigValidator())
@@ -23,6 +26,6 @@ class Config(QConfig):
 
 
 YEAR = "2025"
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 cfg = Config()
 qconfig.load("config/config.json", cfg)

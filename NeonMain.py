@@ -1600,10 +1600,21 @@ if __name__ == '__main__':
             QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
             QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
 
-            if isDark():
-                setTheme(Theme.DARK)
-            else:
+            themeConfig = cfg.Theme.value
+            if themeConfig == "Light":
                 setTheme(Theme.LIGHT)
+            elif themeConfig == "Dark":
+                setTheme(Theme.DARK)
+            elif themeConfig == "Auto":
+                if isDark():
+                    setTheme(Theme.DARK)
+                else:
+                    setTheme(Theme.LIGHT)
+            else:
+                if isDark():
+                    setTheme(Theme.DARK)
+                else:
+                    setTheme(Theme.LIGHT)
 
             app = QApplication(sys.argv)
             w = Main()
