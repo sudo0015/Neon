@@ -11,7 +11,7 @@ from typing import Union
 from NeonConfig import cfg
 from darkdetect import isDark
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QSize, pyqtProperty, QRect, QRectF, QEvent, QUrl, QThread, QDate, \
-    QTimer, QEasingCurve
+    QTimer, QEasingCurve, QPropertyAnimation
 from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient, QIcon, QDesktopServices, QFontMetrics, QFont, \
     QImage, QPixmap, QImageReader, QMovie
 from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QStackedWidget, QWidget, QGridLayout, QListWidget, \
@@ -1085,11 +1085,23 @@ class MottoInterface(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.vBoxLayout = QVBoxLayout(self)
+        self.mainLayout = QVBoxLayout(self)
+        self.mainLayout.setContentsMargins(0, 0, 0, 0)
+        self.mainLayout.setSpacing(0)
+
+        self.scrollArea = SmoothScrollArea(self)
+        self.scrollArea.setWidgetResizable(True)
+        self.scrollArea.enableTransparentBackground()
+        self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+
+        self.contentWidget = QWidget()
+        self.contentWidget.setStyleSheet("background: transparent;")
+        self.contentWidget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.vBoxLayout = QVBoxLayout(self.contentWidget)
         self.vBoxLayout.setContentsMargins(10, 10, 10, 10)
 
-        self.chineseLabel = MottoLabel(self)
-        self.englishLabel = MottoLabel(self)
+        self.chineseLabel = MottoLabel(self.contentWidget)
+        self.englishLabel = MottoLabel(self.contentWidget)
         self.chineseLabel.setWordWrap(True)
         self.englishLabel.setWordWrap(True)
         self.chineseLabel.setTextColor(QColor("black"))
@@ -1097,11 +1109,27 @@ class MottoInterface(QWidget):
 
         self.vBoxLayout.addWidget(self.chineseLabel)
         self.vBoxLayout.addWidget(self.englishLabel)
+        self.vBoxLayout.addStretch()
+
+        self.scrollArea.setWidget(self.contentWidget)
+        self.mainLayout.addWidget(self.scrollArea)
 
         self.chineseLabel.setText("")
         self.englishLabel.setText("暂无数据")
         self.chineseLabel.setHidden(True)
         self.englishLabel.setAlignment(Qt.AlignCenter)
+
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+
+    def updateContent(self, chs="", eng=""):
+        self.chineseLabel.setText(chs)
+        self.englishLabel.setText(eng)
+        self.chineseLabel.setHidden(not chs)
+        self.englishLabel.setAlignment(Qt.AlignLeft if chs else Qt.AlignCenter)
+        self.contentWidget.updateGeometry()
+        self.scrollArea.updateGeometry()
+        if self.parent():
+            self.parent().updateGeometry()
 
 
 class CountdownInterface(QWidget):
@@ -1299,16 +1327,10 @@ class IntegratedCard(CardWidget):
             self.weatherInterface.updateStyle()
 
     def onMottoUpdated(self):
-        self.mottoInterface.chineseLabel.setText(self.mottoThread.data['chs'])
-        self.mottoInterface.englishLabel.setText(self.mottoThread.data['eng'])
-        self.mottoInterface.chineseLabel.setHidden(False)
-        self.mottoInterface.englishLabel.setAlignment(Qt.AlignLeft)
+        self.mottoInterface.updateContent(self.mottoThread.data['chs'], self.mottoThread.data['eng'])
 
     def onMottoError(self):
-        self.mottoInterface.chineseLabel.setText("")
-        self.mottoInterface.englishLabel.setText("暂无数据")
-        self.mottoInterface.chineseLabel.setHidden(True)
-        self.mottoInterface.englishLabel.setAlignment(Qt.AlignCenter)
+        self.mottoInterface.updateContent("", "暂无数据")
 
     def updateStyle(self):
         if self.hPager.currentIndex() == 0:
@@ -1427,7 +1449,7 @@ class Main(QWidget):
         self.vBoxLayout.addWidget(self.curriculumCard)
         self.vBoxLayout.addStretch()
 
-        self._tray_icon_menu = RoundMenu()
+        self.menu = RoundMenu()
         self.tray_icon = QSystemTrayIcon(self)
         self.tray_icon.setIcon(QIcon(":/icon.png"))
         self.tray_icon.setToolTip("Neon")
@@ -1435,9 +1457,22 @@ class Main(QWidget):
         self.createTrayIcon()
         self.tray_icon.activated.connect(self.trayIconActivated)
 
+        self.setMouseTracking(True)
+
+    def contextMenuEvent(self, event):
+        self.menu.exec(event.globalPos())
+        event.accept()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.RightButton:
+            self.menu.exec(event.globalPos())
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
     def trayIconActivated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger or reason == QSystemTrayIcon.ActivationReason.Context:
-            self._tray_icon_menu.exec(self.tray_icon.geometry().center())
+            self.menu.exec(self.tray_icon.geometry().center())
 
     def createActions(self):
         self._refresh_action = QAction(FluentFontIcon("\ue72c").icon(), "刷新", parent=self)
@@ -1457,16 +1492,16 @@ class Main(QWidget):
         self._quit_action.triggered.connect(self.quitApp)
 
     def createTrayIcon(self):
-        self._tray_icon_menu.addAction(self._refresh_action)
-        self._tray_icon_menu.addSeparator()
-        self._tray_icon_menu.addAction(self._setting_action)
-        self._tray_icon_menu.addAction(self._help_action)
-        self._tray_icon_menu.addSeparator()
-        self._tray_icon_menu.addAction(self._restore_action)
-        self._tray_icon_menu.addAction(self._hide_action)
-        self._tray_icon_menu.addSeparator()
-        self._tray_icon_menu.addAction(self._quit_action)
-        self.tray_icon.setContextMenu(self._tray_icon_menu)
+        self.menu.addAction(self._refresh_action)
+        self.menu.addSeparator()
+        self.menu.addAction(self._setting_action)
+        self.menu.addAction(self._help_action)
+        self.menu.addSeparator()
+        self.menu.addAction(self._restore_action)
+        self.menu.addAction(self._hide_action)
+        self.menu.addSeparator()
+        self.menu.addAction(self._quit_action)
+        self.tray_icon.setContextMenu(self.menu)
         self.tray_icon.show()
 
     def refresh(self):
