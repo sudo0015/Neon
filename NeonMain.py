@@ -11,7 +11,7 @@ from typing import Union
 from NeonConfig import cfg
 from darkdetect import isDark
 from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QSize, pyqtProperty, QRect, QRectF, QEvent, QUrl, QThread, QDate, \
-    QTimer, QEasingCurve, QPropertyAnimation
+    QTimer, QEasingCurve
 from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient, QIcon, QDesktopServices, QFontMetrics, QFont, \
     QImage, QPixmap, QImageReader, QMovie
 from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QStackedWidget, QWidget, QGridLayout, QListWidget, \
@@ -21,7 +21,7 @@ from PyQt5.QtSvg import QSvgRenderer
 from qfluentwidgets import FluentIcon, isDarkTheme, HorizontalPipsPager, drawIcon, PipsScrollButtonDisplayMode, \
     SmoothScrollBar, FluentStyleSheet, ToolTipFilter, ToolTipPosition, Theme, setFont, FluentIconBase, themeColor, \
     qconfig, setCustomStyleSheet, getFont, SmoothScrollDelegate, FluentFontIconBase, setTheme
-from qfluentwidgets.components.widgets.menu import LabelContextMenu, RoundMenu
+from qfluentwidgets.components.widgets.menu import LabelContextMenu, RoundMenu, CheckableMenu, MenuIndicatorType
 from qfluentwidgets.common.animation import BackgroundAnimationWidget
 from qfluentwidgets.components.widgets.pips_pager import PipsDelegate, ScrollButton
 from qfluentwidgets.common.overload import singledispatchmethod
@@ -1352,7 +1352,7 @@ class CurriculumCard(CardWidget):
 
         self.nullLabel = MottoLabel(self)
         self.nullLabel.setTextColor(QColor('grey'))
-        self.nullLabel.setText("无课程")
+        self.nullLabel.setText("          无课程")
         self.nullLabel.setHidden(True)
 
         self.mainLayout = QVBoxLayout(self)
@@ -1375,7 +1375,16 @@ class CurriculumCard(CardWidget):
         self.scrollArea.setWidget(self.contentWidget)
         self.mainLayout.addWidget(self.scrollArea)
 
-        dayOfWeek = QDate.currentDate().dayOfWeek()
+        self.updateCurriculum(0)
+
+    def updateCurriculum(self, dayOfWeek=0):
+        for i in reversed(range(self.contentLayout.count())):
+            widget = self.contentLayout.itemAt(i).widget()
+            if isinstance(widget, CurriculumButton):
+                widget.deleteLater()
+
+        if dayOfWeek == 0:
+            dayOfWeek = QDate.currentDate().dayOfWeek()
         if dayOfWeek == 1:
             lst = cfg.Mon.value
         elif dayOfWeek == 2:
@@ -1392,6 +1401,7 @@ class CurriculumCard(CardWidget):
             lst = cfg.Sun.value
 
         if lst:
+            self.nullLabel.setHidden(True)
             for item in lst:
                 btn = CurriculumButton(self.contentWidget)
                 if str(item[1]):
@@ -1478,6 +1488,42 @@ class Main(QWidget):
         self._refresh_action = QAction(FluentFontIcon("\ue72c").icon(), "刷新", parent=self)
         self._refresh_action.triggered.connect(self.refresh)
 
+        self._mon_action = QAction("周一")
+        self._tue_action = QAction("周二")
+        self._wed_action = QAction("周三")
+        self._thu_action = QAction("周四")
+        self._fri_action = QAction("周五")
+        self._sat_action = QAction("周六")
+        self._sun_action = QAction("周日")
+        self._mon_action.setCheckable(True)
+        self._tue_action.setCheckable(True)
+        self._wed_action.setCheckable(True)
+        self._thu_action.setCheckable(True)
+        self._fri_action.setCheckable(True)
+        self._sat_action.setCheckable(True)
+        self._sun_action.setCheckable(True)
+        self._mon_action.triggered.connect(lambda: self.switchCurriculum(1))
+        self._tue_action.triggered.connect(lambda: self.switchCurriculum(2))
+        self._wed_action.triggered.connect(lambda: self.switchCurriculum(3))
+        self._thu_action.triggered.connect(lambda: self.switchCurriculum(4))
+        self._fri_action.triggered.connect(lambda: self.switchCurriculum(5))
+        self._sat_action.triggered.connect(lambda: self.switchCurriculum(6))
+        self._sun_action.triggered.connect(lambda: self.switchCurriculum(7))
+        self.actionList = [
+            self._mon_action,
+            self._tue_action,
+            self._wed_action,
+            self._thu_action,
+            self._fri_action,
+            self._sat_action,
+            self._sun_action
+        ]
+        self.actionList[QDate.currentDate().dayOfWeek() - 1].setChecked(True)
+        self.switchSubmenu = CheckableMenu(parent=self, indicatorType=MenuIndicatorType.RADIO)
+        self.switchSubmenu.setTitle("切换课表")
+        self.switchSubmenu.setIcon(FluentFontIcon("\ue8ab").icon())
+        self.switchSubmenu.addActions(self.actionList)
+
         self._setting_action = QAction(FluentFontIcon("\ue713").icon(), "设置", self)
         self._help_action = QAction(FluentFontIcon("\uea6b").icon(), "帮助", self)
         self._setting_action.triggered.connect(self.openSetting)
@@ -1493,6 +1539,7 @@ class Main(QWidget):
 
     def createTrayIcon(self):
         self.menu.addAction(self._refresh_action)
+        self.menu.addMenu(self.switchSubmenu)
         self.menu.addSeparator()
         self.menu.addAction(self._setting_action)
         self.menu.addAction(self._help_action)
@@ -1505,6 +1552,8 @@ class Main(QWidget):
         self.tray_icon.show()
 
     def refresh(self):
+        self.curriculumCard.updateCurriculum(0)
+
         self.integratedCard.weatherThread.isThreadRunning = False
         self.integratedCard.mottoThread.isThreadRunning = False
         self.integratedCard.weatherThread.terminate()
@@ -1522,6 +1571,12 @@ class Main(QWidget):
         self.integratedCard.mottoThread.start()
 
         self.integratedCard.countdownInterface.updateCountdown()
+
+    def switchCurriculum(self, dayOfWeek):
+        for action in self.actionList:
+            action.setChecked(False)
+        self.actionList[dayOfWeek - 1].setChecked(True)
+        self.curriculumCard.updateCurriculum(dayOfWeek)
 
     def openSetting(self):
         os.startfile(os.path.abspath("./config/config.json"))

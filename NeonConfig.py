@@ -1,5 +1,6 @@
-from qfluentwidgets import qconfig, QConfig, ConfigItem, OptionsConfigItem, BoolValidator, OptionsValidator, \
-    FolderValidator, RangeConfigItem, RangeValidator, EnumSerializer, ConfigValidator
+# -*- coding: utf-8 -*-
+
+from qfluentwidgets import qconfig, QConfig, ConfigItem, BoolValidator, ConfigValidator
 
 class Config(QConfig):
     AutoRun = ConfigItem("MainWindow", "AutoRun", True, BoolValidator())
@@ -22,6 +23,6 @@ class Config(QConfig):
 
 
 YEAR = "2025"
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 cfg = Config()
 qconfig.load("config/config.json", cfg)
