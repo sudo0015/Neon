@@ -1050,14 +1050,6 @@ class WeatherInterface(QWidget):
             self.styleChanged.emit("2f2cbc", "4bb4f0")
         elif "NIGHT" in self.skycon:
             self.styleChanged.emit("06050e", "233075")
-        elif "RAIN" in self.skycon or "HAZE" in self.skycon:
-            self.styleChanged.emit("172830", "57758d")
-        elif "SNOW" in self.skycon:
-            self.styleChanged.emit("b1ccea", "afcee2")
-        elif self.skycon == "CLOUDY" or self.skycon == "FOG" or self.skycon == "WIND":
-            self.styleChanged.emit("9bc0da", "cee4f1")
-        elif self.skycon == "DUST" or self.skycon == "SAND":
-            self.styleChanged.emit("d5b603", "ddab5f")
         else:
             self.styleChanged.emit("2f2cbc", "4bb4f0")
 
