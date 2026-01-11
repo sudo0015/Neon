@@ -16,7 +16,7 @@ from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient, QIcon, 
     QImage, QPixmap, QImageReader, QMovie
 from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QStackedWidget, QWidget, QGridLayout, QListWidget, \
     QListWidgetItem, QFrame, QSwipeGesture, QPushButton, QSizePolicy, QStyleOptionButton, QStyle, QLabel, QScrollArea, \
-    QScroller, QSystemTrayIcon, QAction
+    QScroller, QSystemTrayIcon, QAction, QSpacerItem
 from PyQt5.QtSvg import QSvgRenderer
 from qfluentwidgets import FluentIcon, isDarkTheme, HorizontalPipsPager, drawIcon, PipsScrollButtonDisplayMode, \
     SmoothScrollBar, FluentStyleSheet, ToolTipFilter, ToolTipPosition, Theme, setFont, FluentIconBase, themeColor, \
@@ -1375,13 +1375,19 @@ class CurriculumCard(CardWidget):
         self.scrollArea.setWidget(self.contentWidget)
         self.mainLayout.addWidget(self.scrollArea)
 
-        self.updateCurriculum(0)
-
     def updateCurriculum(self, dayOfWeek=0):
         for i in reversed(range(self.contentLayout.count())):
-            widget = self.contentLayout.itemAt(i).widget()
-            if isinstance(widget, CurriculumButton):
+            item = self.contentLayout.itemAt(i)
+            widget = item.widget()
+            if widget and isinstance(widget, CurriculumButton):
+                widget.hide()
                 widget.deleteLater()
+            elif not widget:
+                self.contentLayout.removeItem(item)
+                del item
+
+        self.nullLabel.setHidden(False)
+        self.setFixedHeight(400)
 
         if dayOfWeek == 0:
             dayOfWeek = QDate.currentDate().dayOfWeek()
@@ -1400,6 +1406,9 @@ class CurriculumCard(CardWidget):
         else:
             lst = cfg.Sun.value
 
+        contentHeight = 0
+        visibleWidgetCount = 0
+
         if lst:
             self.nullLabel.setHidden(True)
             for item in lst:
@@ -1417,23 +1426,38 @@ class CurriculumCard(CardWidget):
                     btn.installEventFilter(ToolTipFilter(btn, 0, ToolTipPosition.BOTTOM))
 
                 self.contentLayout.addWidget(btn, Qt.AlignCenter)
+
+                contentHeight += btn.sizeHint().height()
+                visibleWidgetCount += 1
         else:
             self.nullLabel.setHidden(False)
+            contentHeight += self.nullLabel.sizeHint().height()
+            visibleWidgetCount += 1
 
         self.contentLayout.addStretch()
+        if visibleWidgetCount > 1:
+            contentHeight += self.contentLayout.spacing() * (visibleWidgetCount - 1)
+        contentHeight += self.contentLayout.contentsMargins().top() + self.contentLayout.contentsMargins().bottom()
 
-        if self.scrollArea and self.contentWidget:
-            contentHeight = self.contentWidget.sizeHint().height()
-            maxHeight = QApplication.desktop().availableGeometry().height() - 260
-            if contentHeight > maxHeight:
-                self.setFixedHeight(maxHeight)
-                self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            elif contentHeight <= 400:
-                self.setFixedHeight(400)
-                self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            else:
-                self.setFixedHeight(contentHeight)
-                self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.contentWidget.updateGeometry()
+        self.contentWidget.adjustSize()
+        self.scrollArea.updateGeometry()
+        self.scrollArea.adjustSize()
+        QApplication.processEvents()
+
+        maxHeight = QApplication.desktop().availableGeometry().height() - 260
+        print(contentHeight, maxHeight)
+        if contentHeight > maxHeight:
+            self.setFixedHeight(maxHeight)
+            self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        elif contentHeight <= 400:
+            self.setFixedHeight(400)
+            self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        else:
+            self.setFixedHeight(contentHeight)
+            self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        self.update()
 
 
 class Main(QWidget):
@@ -1454,6 +1478,7 @@ class Main(QWidget):
 
         self.integratedCard = IntegratedCard(self)
         self.curriculumCard = CurriculumCard(self)
+        self.curriculumCard.updateCurriculum(0)
         self.vBoxLayout.addStretch()
         self.vBoxLayout.addWidget(self.integratedCard)
         self.vBoxLayout.addWidget(self.curriculumCard)
