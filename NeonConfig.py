@@ -26,6 +26,6 @@ class Config(QConfig):
 
 
 YEAR = "2025"
-VERSION = "1.5.3"
+VERSION = "1.5.4"
 cfg = Config()
 qconfig.load("config/config.json", cfg)

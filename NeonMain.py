@@ -1051,7 +1051,7 @@ class WeatherInterface(QWidget):
         elif "NIGHT" in self.skycon:
             self.styleChanged.emit("06050e", "233075")
         else:
-            self.styleChanged.emit("2f2cbc", "4bb4f0")
+            self.styleChanged.emit("172830", "57758d")
 
 
 class MottoThread(QThread):
@@ -1111,6 +1111,12 @@ class MottoInterface(QWidget):
         self.chineseLabel.setHidden(True)
         self.englishLabel.setAlignment(Qt.AlignCenter)
 
+        self.scrollDirection = 1
+        self.scrollSpeed = 200
+        self.scrollTimer = QTimer(self)
+        self.scrollTimer.timeout.connect(self.autoScroll)
+        self.isScrolling = False
+
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
 
     def updateContent(self, chs="", eng=""):
@@ -1122,6 +1128,35 @@ class MottoInterface(QWidget):
         self.scrollArea.updateGeometry()
         if self.parent():
             self.parent().updateGeometry()
+
+        if chs or eng:
+            self.startAutoScroll()
+        else:
+            self.stopAutoScroll()
+
+    def startAutoScroll(self):
+        if not self.isScrolling:
+            self.scrollTimer.start(self.scrollSpeed)
+            self.isScrolling = True
+
+    def stopAutoScroll(self):
+        self.scrollTimer.stop()
+        self.isScrolling = False
+
+    def autoScroll(self):
+        scrollBar = self.scrollArea.verticalScrollBar()
+        currentValue = scrollBar.value()
+        maxScroll = scrollBar.maximum()
+
+        if currentValue >= maxScroll:
+            self.scrollDirection = -1
+        elif currentValue <= 0:
+            self.scrollDirection = 1
+        scrollBar.setValue(currentValue + 2 * self.scrollDirection)
+
+    def closeEvent(self, event):
+        self.stopAutoScroll()
+        super().closeEvent(event)
 
 
 class CountdownInterface(QWidget):
