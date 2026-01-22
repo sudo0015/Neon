@@ -16,7 +16,7 @@ from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient, QIcon, 
     QImage, QPixmap, QImageReader, QMovie
 from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QStackedWidget, QWidget, QGridLayout, QListWidget, \
     QListWidgetItem, QFrame, QSwipeGesture, QPushButton, QSizePolicy, QStyleOptionButton, QStyle, QLabel, QScrollArea, \
-    QScroller, QSystemTrayIcon, QAction, QSpacerItem
+    QScroller, QSystemTrayIcon, QAction
 from PyQt5.QtSvg import QSvgRenderer
 from qfluentwidgets import FluentIcon, isDarkTheme, HorizontalPipsPager, drawIcon, PipsScrollButtonDisplayMode, \
     SmoothScrollBar, FluentStyleSheet, ToolTipFilter, ToolTipPosition, Theme, setFont, FluentIconBase, themeColor, \
@@ -1445,7 +1445,7 @@ class CurriculumCard(CardWidget):
                 else:
                     btn.setDualText(str(item[0]), ' ')
                 btn.setFixedWidth(150)
-                btn.setTextColor(cfg.FontColor.value)
+                btn.setTextColor(cfg.ThemeColor.value)
 
                 if item[2]:
                     btn.setUrl(QUrl.fromLocalFile(str(item[2])))
@@ -1473,7 +1473,6 @@ class CurriculumCard(CardWidget):
         QApplication.processEvents()
 
         maxHeight = QApplication.desktop().availableGeometry().height() - 260
-        print(contentHeight, maxHeight)
         if contentHeight > maxHeight:
             self.setFixedHeight(maxHeight)
             self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -1631,7 +1630,7 @@ class Main(QWidget):
         self.curriculumCard.updateCurriculum(dayOfWeek)
 
     def openSetting(self):
-        os.startfile(os.path.abspath("./config/config.json"))
+        os.startfile(os.path.join(os.path.expanduser('~'), '.Neon', 'config', 'config.json'))
 
     def quitApp(self):
         self.hide()
