@@ -1,0 +1,22 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/">
+    <file>icon.png</file>
+    <file>CLEAR_DAY.svg</file>
+    <file>CLEAR_NIGHT.svg</file>
+    <file>CLOUDY.svg</file>
+    <file>DUST.svg</file>
+    <file>FOG.svg</file>
+    <file>HAZE.svg</file>
+    <file>HEAVY_RAIN.svg</file>
+    <file>HEAVY_SNOW.svg</file>
+    <file>LIGHT_RAIN.svg</file>
+    <file>LIGHT_SNOW.svg</file>
+    <file>LOADING.svg</file>
+    <file>MODERATE_RAIN.svg</file>
+    <file>MODERATE_SNOW.svg</file>
+    <file>PARTLY_CLOUDY_DAY.svg</file>
+    <file>PARTLY_CLOUDY_NIGHT.svg</file>
+    <file>RAIN_SNOW.svg</file>
+    <file>WIND.svg</file>
+</qresource>
+</RCC>

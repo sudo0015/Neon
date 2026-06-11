@@ -10,8 +10,8 @@ import NeonResource
 from typing import Union
 from NeonConfig import cfg
 from darkdetect import isDark
-from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QSize, pyqtProperty, QRect, QRectF, QEvent, QUrl, QThread, QDate, \
-    QTimer, QEasingCurve
+from PyQt5.QtCore import Qt, QPoint, pyqtSignal, QSize, QRect, QRectF, QEvent, QUrl, QThread, QDate, QTimer, \
+    QEasingCurve, pyqtProperty
 from PyQt5.QtGui import QColor, QPainter, QPainterPath, QLinearGradient, QIcon, QDesktopServices, QFontMetrics, QFont, \
     QImage, QPixmap, QImageReader, QMovie
 from PyQt5.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QStackedWidget, QWidget, QGridLayout, QListWidget, \
